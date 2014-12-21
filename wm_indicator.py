@@ -19,8 +19,8 @@ class Application(object):
 
     def _create_indicator(self):
         indicator = AppIndicator.Indicator.new(
-            'wm-indicator',
-            'gtk-paste',
+            'wm_indicator',
+            'wm_indicator',
             AppIndicator.IndicatorCategory.OTHER
         )
         indicator.set_menu(self._create_menu())
