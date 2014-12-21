@@ -7,11 +7,23 @@ from subprocess import Popen, PIPE, STDOUT
 import os
 
 
+def is_exec_available(cmd):
+    for path in os.environ['PATH'].split(os.pathsep):
+        path = path.strip('"')
+        exec_path = os.path.join(path, cmd)
+        if os.path.isfile(exec_path) and os.access(exec_path, os.X_OK):
+            return True
+    return False
+
+
+
 class WindowManager(object):
 
     def __init__(self, name, command):
         self.name = name
         self.command = command
+        self.available = is_exec_available(command)
+        self._process = None
 
     def is_running(self):
         ps = Popen(['ps', '-e'], stdout=PIPE)
@@ -20,16 +32,8 @@ class WindowManager(object):
                 return True
         return False
 
-    def is_available(self):
-        for path in os.environ['PATH'].split(os.pathsep):
-            path = path.strip('"')
-            exec_path = os.path.join(path, self.command)
-            if os.path.isfile(exec_path) and os.access(exec_path, os.X_OK):
-                return True
-        return False
-
     def replace(self):
-        Popen([self.command, '--replace'], stdout=PIPE, stderr=STDOUT)
+        self._process = Popen([self.command, '--replace'], stdout=PIPE, stderr=STDOUT)
 
 
 SUPPORTED_MANAGERS = [
@@ -62,7 +66,7 @@ class Application(object):
         items = []
         group = None
         for wm in managers:
-            if not wm.is_available():
+            if not wm.available:
                 print wm.name + ' is not available'
                 continue
             item = self._create_single_wm_item(wm, group)
