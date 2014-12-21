@@ -2,19 +2,50 @@
 
 from gi.repository import AppIndicator3 as AppIndicator
 from gi.repository import Gtk
-from subprocess import Popen
+from subprocess import Popen, PIPE, STDOUT
+
+import os
 
 
-SUPPORTED_MANAGERS = {
-    'Gala': 'gala',
-    'Openbox': 'openbox'
-}
+class WindowManager(object):
+
+    def __init__(self, name, command):
+        self.name = name
+        self.command = command
+
+    def is_running(self):
+        ps = Popen(['ps', '-e'], stdout=PIPE)
+        for line in ps.stdout:
+            if line.find(self.name) >= 0:
+                return True
+        return False
+
+    def is_available(self):
+        for path in os.environ['PATH'].split(os.pathsep):
+            path = path.strip('"')
+            exec_path = os.path.join(path, self.command)
+            if os.path.isfile(exec_path) and os.access(exec_path, os.X_OK):
+                return True
+        return False
+
+    def replace(self):
+        Popen([self.command, '--replace'], stdout=PIPE, stderr=STDOUT)
+
+
+SUPPORTED_MANAGERS = [
+    WindowManager('Gala', 'gala'),
+    WindowManager('Openbox', 'openbox'),
+    WindowManager('Compiz', 'compiz'),
+    WindowManager('Mutter', 'mutter'),
+]
 
 
 class Application(object):
 
     def __init__(self, managers):
         self._managers = managers
+        self._wm_items = self._create_wm_items(managers)
+        self._ind = self._create_indicator()
         Gtk.init()
 
     def _create_indicator(self):
@@ -27,10 +58,23 @@ class Application(object):
         indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
         return indicator
 
+    def _create_wm_items(self, managers):
+        items = []
+        group = None
+        for wm in managers:
+            if not wm.is_available():
+                print wm.name + ' is not available'
+                continue
+            item = self._create_single_wm_item(wm, group)
+            group = item
+            items.append(item)
+        return items
+
     def _create_menu(self):
         menu = Gtk.Menu()
-        for label, command in self._managers.items():
-            menu.append(self._create_wm_item(label, command))
+        for wm_item in self._wm_items:
+            menu.append(wm_item)
+        menu.append(self._create_separator_item())
         menu.append(self._create_quit_item())
         menu.show()
         return menu
@@ -42,21 +86,28 @@ class Application(object):
         item.show()
         return item
 
-    def _create_wm_item(self, label, command):
-        item = Gtk.MenuItem()
-        item.set_label(label)
-        item.connect('activate', self.switch, command)
+    def _create_separator_item(self):
+        separator = Gtk.SeparatorMenuItem()
+        separator.show()
+        return separator
+
+    def _create_single_wm_item(self, wm, group):
+        item = Gtk.RadioMenuItem(group=group, label=wm.name)
+        item.wm = wm
+        item.set_active(wm.is_running())
+        item.connect('toggled', self.switch)
         item.show()
         return item
 
     def quit(self, widget):
         Gtk.main_quit()
 
-    def switch(self, widget, name):
-        Popen([name, '--replace'])
+    def switch(self, widget):
+        if not widget.get_active():
+            return
+        widget.wm.replace()
 
     def run(self):
-        self._ind = self._create_indicator()
         Gtk.main()
 
 
